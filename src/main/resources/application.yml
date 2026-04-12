@@ -1,0 +1,79 @@
+server:
+  address: 127.0.0.1
+  port: 9998
+
+spring:
+  mail:
+    host: smtp.qq.com
+    port: 587
+    username: 2597334145@qq.com
+    password: jtgziafwwyrudiac
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+  application:
+    name: xiaozhi-spring-ai-mcp
+  ai:
+    mcp:
+      server:
+        enabled: true
+        name: xiaozhi-spring-ai-mcp
+        version: 0.0.1
+        type: SYNC
+        protocol: STREAMABLE
+        instructions: 提供演示用 MCP 工具并桥接到小智 MCP 接入点
+        capabilities:
+          tool: true
+          resource: false
+          prompt: false
+          completion: false
+        streamable-http:
+          mcp-endpoint: /mcp
+
+langchain4j:
+  open-ai:
+    embedding-model:
+      log-requests: true
+      log-responses: true
+      base-url: https://ai.gitee.com/v1
+      api-key: RB73HOUOZA6P20HHZ4UIM1XIDKD9OQVPK456DGMH
+      dimensions: 4096
+      model-name: Qwen3-Embedding-8B
+xiaozhi:
+  bridge:
+    enabled: ${XIAOZHI_BRIDGE_ENABLED:true}
+    endpoint: ${XIAOZHI_MCP_ENDPOINT:wss://api.xiaozhi.me/mcp/?token=eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjg3NzE3OSwiYWdlbnRJZCI6MTY5MTg4NywiZW5kcG9pbnRJZCI6ImFnZW50XzE2OTE4ODciLCJwdXJwb3NlIjoibWNwLWVuZHBvaW50IiwiaWF0IjoxNzc1ODQyNDU3LCJleHAiOjE4MDc0MDAwNTd9.LATUXZkfti_MWz8W6WDhidGPf2MVU2WwhaPgNosjVQIQAcUblTCrmApGCZqp17bcVqp_sOZkec1X-iy5v_yHzw}
+    local-mcp-url: ${XIAOZHI_LOCAL_MCP_URL:http://127.0.0.1:${server.port}/mcp}
+    connect-timeout: 10s
+    request-timeout: 30s
+    initial-reconnect-delay: 2s
+    max-reconnect-delay: 30s
+  external-mcp:
+    connect-timeout: 10s
+    request-timeout: 30s
+    initialization-timeout: 30s
+#    connections:
+#      # 示例: 外部 SSE MCP 服务，开启后会自动把其工具注册到当前本地 MCP 服务
+#      remote-sse:
+#        enabled: ${XIAOZHI_EXTERNAL_REMOTE_SSE_ENABLED:true}
+#        transport: SSE
+#        url: ${XIAOZHI_EXTERNAL_REMOTE_SSE_URL:http://154.193.217.93:9998/sse}
+#        # endpoint 留空时会从 url 自动推导（例如 /sse）
+#        endpoint: ${XIAOZHI_EXTERNAL_REMOTE_SSE_ENDPOINT:}
+#        headers: {}
+#      remote-sse-1:
+#        enabled: true
+#        transport: SSE
+#        url: https://dashscope.aliyuncs.com/api/v1/mcps/zhipu-websearch/sse
+#        # 留空以便从 url 自动推导完整路径: /api/v1/mcps/zhipu-websearch/sse
+#        endpoint:
+#        headers:
+#          Authorization: Bearer sk-d06e47e55f6c4b8f881f2c9d61b68500
+
+logging:
+  level:
+    me.xiaozhi.mcp: INFO
