@@ -2,11 +2,19 @@ package me.xiaozhi.mcp.external;
 
 import java.net.URI;
 import java.net.http.HttpRequest;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientSseClientTransport;
@@ -28,13 +36,15 @@ import org.springframework.util.StringUtils;
 public class ExternalMcpConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(ExternalMcpConfiguration.class);
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Bean(destroyMethod = "close")
     public ExternalMcpClients externalMcpClients(ExternalMcpProperties properties) {
         List<McpSyncClient> clients = new ArrayList<>();
-        int totalConnections = properties.getConnections().size();
+        Map<String, ExternalMcpProperties.ConnectionProperties> allConnections = loadConnections(properties);
+        int totalConnections = allConnections.size();
 
-        for (Map.Entry<String, ExternalMcpProperties.ConnectionProperties> entry : properties.getConnections().entrySet()) {
+        for (Map.Entry<String, ExternalMcpProperties.ConnectionProperties> entry : allConnections.entrySet()) {
             String connectionName = entry.getKey();
             ExternalMcpProperties.ConnectionProperties connection = entry.getValue();
 
@@ -56,6 +66,88 @@ public class ExternalMcpConfiguration {
         return new ExternalMcpClients(clients);
     }
 
+    private Map<String, ExternalMcpProperties.ConnectionProperties> loadConnections(ExternalMcpProperties properties) {
+        Map<String, ExternalMcpProperties.ConnectionProperties> result = new LinkedHashMap<>(properties.getConnections());
+        Map<String, ExternalMcpProperties.ConnectionProperties> dbConnections = loadConnectionsFromDatabase(properties.getDatabase());
+        result.putAll(dbConnections);
+        return result;
+    }
+
+    private Map<String, ExternalMcpProperties.ConnectionProperties> loadConnectionsFromDatabase(
+            ExternalMcpProperties.DatabaseProperties databaseProperties) {
+        if (!databaseProperties.isEnabled()) {
+            log.info("外部 MCP 数据库加载未启用，跳过数据库加载");
+            return Map.of();
+        }
+
+        if (!StringUtils.hasText(databaseProperties.getUrl())
+                || !StringUtils.hasText(databaseProperties.getUsername())
+                || !StringUtils.hasText(databaseProperties.getPassword())
+                || !StringUtils.hasText(databaseProperties.getQuery())) {
+            log.warn("外部 MCP 数据库加载已启用，但 url/username/password/query 存在缺失，跳过数据库加载");
+            return Map.of();
+        }
+
+        Map<String, ExternalMcpProperties.ConnectionProperties> dbConnections = new LinkedHashMap<>();
+        try (Connection connection = DriverManager.getConnection(
+                databaseProperties.getUrl(),
+                databaseProperties.getUsername(),
+                databaseProperties.getPassword());
+             PreparedStatement statement = connection.prepareStatement(databaseProperties.getQuery());
+             ResultSet resultSet = statement.executeQuery()) {
+
+            while (resultSet.next()) {
+                String name = resultSet.getString("connection_name");
+                if (!StringUtils.hasText(name)) {
+                    continue;
+                }
+                dbConnections.put(name, mapDbConnection(resultSet));
+            }
+            log.info("外部 MCP 数据库加载完成，读取 {} 个连接配置", dbConnections.size());
+        }
+        catch (Exception ex) {
+            log.error("从数据库加载外部 MCP 配置失败: {}", ex.getMessage());
+        }
+        return dbConnections;
+    }
+
+    private ExternalMcpProperties.ConnectionProperties mapDbConnection(ResultSet resultSet) throws Exception {
+        ExternalMcpProperties.ConnectionProperties connection = new ExternalMcpProperties.ConnectionProperties();
+        connection.setEnabled(resultSet.getBoolean("enabled"));
+        connection.setTransport(resolveTransport(resultSet.getString("transport")));
+        connection.setUrl(resultSet.getString("url"));
+        connection.setEndpoint(resultSet.getString("endpoint"));
+        connection.setHeaders(parseHeaders(resultSet.getString("headers")));
+        return connection;
+    }
+
+    private Map<String, String> parseHeaders(String headersJson) {
+        if (!StringUtils.hasText(headersJson)) {
+            return new LinkedHashMap<>();
+        }
+        try {
+            return OBJECT_MAPPER.readValue(headersJson, new TypeReference<>() {
+            });
+        }
+        catch (Exception ex) {
+            log.warn("解析数据库 headers 失败，已忽略。headers={}", headersJson);
+            return new LinkedHashMap<>();
+        }
+    }
+
+    private ExternalMcpProperties.Transport resolveTransport(String transportValue) {
+        if (!StringUtils.hasText(transportValue)) {
+            return ExternalMcpProperties.Transport.SSE;
+        }
+        try {
+            return ExternalMcpProperties.Transport.valueOf(transportValue.trim().toUpperCase());
+        }
+        catch (IllegalArgumentException ex) {
+            log.warn("未知 transport [{}]，默认使用 SSE", transportValue);
+            return ExternalMcpProperties.Transport.SSE;
+        }
+    }
+
     @Bean
     public ToolCallbackProvider externalMcpToolCallbackProvider(ExternalMcpClients externalMcpClients) {
         if (externalMcpClients.getClients().isEmpty()) {
@@ -68,7 +160,7 @@ public class ExternalMcpConfiguration {
                 .build();
     }
 
-    private java.util.Optional<McpSyncClient> createClient(
+    private Optional<McpSyncClient> createClient(
             String connectionName,
             ExternalMcpProperties.ConnectionProperties connection,
             ExternalMcpProperties properties) {
@@ -92,11 +184,11 @@ public class ExternalMcpConfiguration {
             log.info("已接入外部 MCP [{}]，地址={}，服务={}，发现 {} 个工具", connectionName,
                     connection.getUrl(), initializeResult.serverInfo().name(), toolCount);
 
-            return java.util.Optional.of(client);
+            return Optional.of(client);
         }
         catch (Exception ex) {
             log.error("接入外部 MCP [{}] 失败，地址={}，原因={}", connectionName, connection.getUrl(), ex.getMessage());
-            return java.util.Optional.empty();
+            return Optional.empty();
         }
     }
 

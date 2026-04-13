@@ -56,23 +56,22 @@ xiaozhi:
     connect-timeout: 10s
     request-timeout: 30s
     initialization-timeout: 30s
-#    connections:
-#      # 示例: 外部 SSE MCP 服务，开启后会自动把其工具注册到当前本地 MCP 服务
-#      remote-sse:
-#        enabled: ${XIAOZHI_EXTERNAL_REMOTE_SSE_ENABLED:true}
-#        transport: SSE
-#        url: ${XIAOZHI_EXTERNAL_REMOTE_SSE_URL:http://154.193.217.93:9998/sse}
-#        # endpoint 留空时会从 url 自动推导（例如 /sse）
-#        endpoint: ${XIAOZHI_EXTERNAL_REMOTE_SSE_ENDPOINT:}
-#        headers: {}
-#      remote-sse-1:
-#        enabled: true
-#        transport: SSE
-#        url: https://dashscope.aliyuncs.com/api/v1/mcps/zhipu-websearch/sse
-#        # 留空以便从 url 自动推导完整路径: /api/v1/mcps/zhipu-websearch/sse
-#        endpoint:
-#        headers:
-#          Authorization: Bearer sk-d06e47e55f6c4b8f881f2c9d61b68500
+    database:
+      enabled: ${XIAOZHI_EXTERNAL_DB_ENABLED:true}
+      url: ${XIAOZHI_EXTERNAL_DB_URL:jdbc:mysql://154.9.26.25:3306/ser078176670084?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai}
+      username: ${XIAOZHI_EXTERNAL_DB_USERNAME:ser078176670084}
+      password: ${XIAOZHI_EXTERNAL_DB_PASSWORD:1eKSlXK72vy9}
+      query: ${XIAOZHI_EXTERNAL_DB_QUERY:SELECT connection_name, enabled, transport, url, endpoint, headers FROM external_mcp_connections}
+    # connections:
+    #   remote-sse-1:
+    #     enabled: ${XIAOZHI_EXTERNAL_REMOTE_SSE_1_ENABLED:true}
+    #     transport: SSE
+    #     url: ${XIAOZHI_EXTERNAL_REMOTE_SSE_1_URL:https://mcp.api-inference.modelscope.net/62d39bd08abe4b/sse}
+    #     # 留空以便从 url 自动推导完整路径: /api/v1/mcps/zhipu-websearch/sse
+    #     endpoint: ${XIAOZHI_EXTERNAL_REMOTE_SSE_1_ENDPOINT:}
+    # headers:
+    # Authorization: ${XIAOZHI_EXTERNAL_REMOTE_SSE_1_AUTH:Bearer sk-d06e47e55f6c4b8f881f2c9d61b68500}
+    # key: ${XIAOZHI_EXTERNAL_REMOTE_SSE_1_KEY:sk-}
 
 logging:
   level:
