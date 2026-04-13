@@ -47,6 +47,8 @@ public class ExternalMcpConfiguration {
         for (Map.Entry<String, ExternalMcpProperties.ConnectionProperties> entry : allConnections.entrySet()) {
             String connectionName = entry.getKey();
             ExternalMcpProperties.ConnectionProperties connection = entry.getValue();
+            String transport = connection.getTransport() == null ? "null" : connection.getTransport().name();
+            log.info("外部 MCP 连接配置: name={}, transport={}, url={}", connectionName, transport, connection.getUrl());
 
             if (!connection.isEnabled()) {
                 log.info("外部 MCP [{}] 已禁用，跳过接入", connectionName);
@@ -139,8 +141,14 @@ public class ExternalMcpConfiguration {
         if (!StringUtils.hasText(transportValue)) {
             return ExternalMcpProperties.Transport.SSE;
         }
+        String normalized = transportValue.trim().toUpperCase();
+        if ("STREAMABLE_HTTP".equals(normalized)
+                || "STREAMABLE-HTTP".equals(normalized)
+                || "STREAMABLEHTTP".equals(normalized)) {
+            return ExternalMcpProperties.Transport.STREAMABLE;
+        }
         try {
-            return ExternalMcpProperties.Transport.valueOf(transportValue.trim().toUpperCase());
+            return ExternalMcpProperties.Transport.valueOf(normalized);
         }
         catch (IllegalArgumentException ex) {
             log.warn("未知 transport [{}]，默认使用 SSE", transportValue);

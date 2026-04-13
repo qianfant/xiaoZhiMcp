@@ -69,10 +69,12 @@ xiaozhi:
     #     url: ${XIAOZHI_EXTERNAL_REMOTE_SSE_1_URL:https://mcp.api-inference.modelscope.net/62d39bd08abe4b/sse}
     #     # 留空以便从 url 自动推导完整路径: /api/v1/mcps/zhipu-websearch/sse
     #     endpoint: ${XIAOZHI_EXTERNAL_REMOTE_SSE_1_ENDPOINT:}
-    # headers:
-    # Authorization: ${XIAOZHI_EXTERNAL_REMOTE_SSE_1_AUTH:Bearer sk-d06e47e55f6c4b8f881f2c9d61b68500}
-    # key: ${XIAOZHI_EXTERNAL_REMOTE_SSE_1_KEY:sk-}
+    #     headers:
+    #       Authorization: ${XIAOZHI_EXTERNAL_REMOTE_SSE_1_AUTH:Bearer sk-d06e47e55f6c4b8f881f2c9d61b68500}
+    #       key: ${XIAOZHI_EXTERNAL_REMOTE_SSE_1_KEY:sk-}
 
 logging:
   level:
     me.xiaozhi.mcp: INFO
+    io.modelcontextprotocol.client.LifecycleInitializer: ERROR
+    io.modelcontextprotocol.client.transport.ResponseSubscribers: ERROR
