@@ -13,13 +13,26 @@ public class ExternalMcpClients implements AutoCloseable {
         this.clients = new ArrayList<>(clients);
     }
 
-    public List<McpSyncClient> getClients() {
+    public synchronized List<McpSyncClient> getClients() {
         return List.copyOf(clients);
     }
 
+    public synchronized void replaceClients(List<McpSyncClient> refreshedClients) {
+        List<McpSyncClient> oldClients = new ArrayList<>(this.clients);
+        this.clients.clear();
+        this.clients.addAll(refreshedClients);
+        closeClients(oldClients);
+    }
+
     @Override
-    public void close() {
-        clients.forEach(client -> {
+    public synchronized void close() {
+        List<McpSyncClient> oldClients = new ArrayList<>(this.clients);
+        this.clients.clear();
+        closeClients(oldClients);
+    }
+
+    private void closeClients(List<McpSyncClient> targetClients) {
+        targetClients.forEach(client -> {
             try {
                 client.closeGracefully();
             }

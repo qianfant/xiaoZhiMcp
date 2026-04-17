@@ -2,10 +2,6 @@ package me.xiaozhi.mcp.external;
 
 import java.net.URI;
 import java.net.http.HttpRequest;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -21,11 +17,15 @@ import io.modelcontextprotocol.client.transport.HttpClientSseClientTransport;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.spec.McpClientTransport;
 import io.modelcontextprotocol.spec.McpSchema;
+import me.xiaozhi.mcp.external.entity.ExternalMcpConnection;
+import me.xiaozhi.mcp.external.service.ExternalMcpConnectionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.DefaultMcpToolNamePrefixGenerator;
 import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -37,9 +37,21 @@ public class ExternalMcpConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(ExternalMcpConfiguration.class);
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    @Autowired(required = false)
+    private ExternalMcpConnectionService externalMcpConnectionService;
 
     @Bean(destroyMethod = "close")
     public ExternalMcpClients externalMcpClients(ExternalMcpProperties properties) {
+        return new ExternalMcpClients(createClients(properties));
+    }
+
+    public void refreshExternalMcpClients(ExternalMcpClients externalMcpClients, ExternalMcpProperties properties) {
+        List<McpSyncClient> refreshedClients = createClients(properties);
+        externalMcpClients.replaceClients(refreshedClients);
+        log.info("外部 MCP 客户端刷新完成，当前已接入 {} 个", refreshedClients.size());
+    }
+
+    private List<McpSyncClient> createClients(ExternalMcpProperties properties) {
         List<McpSyncClient> clients = new ArrayList<>();
         Map<String, ExternalMcpProperties.ConnectionProperties> allConnections = loadConnections(properties);
         int totalConnections = allConnections.size();
@@ -65,7 +77,7 @@ public class ExternalMcpConfiguration {
         }
 
         log.info("外部 MCP 连接初始化完成: 配置 {} 个，成功接入 {} 个", totalConnections, clients.size());
-        return new ExternalMcpClients(clients);
+        return clients;
     }
 
     private Map<String, ExternalMcpProperties.ConnectionProperties> loadConnections(ExternalMcpProperties properties) {
@@ -82,28 +94,20 @@ public class ExternalMcpConfiguration {
             return Map.of();
         }
 
-        if (!StringUtils.hasText(databaseProperties.getUrl())
-                || !StringUtils.hasText(databaseProperties.getUsername())
-                || !StringUtils.hasText(databaseProperties.getPassword())
-                || !StringUtils.hasText(databaseProperties.getQuery())) {
-            log.warn("外部 MCP 数据库加载已启用，但 url/username/password/query 存在缺失，跳过数据库加载");
+        if (externalMcpConnectionService == null) {
+            log.warn("外部 MCP 数据库加载已启用，但 MyBatis-Plus 查询服务不可用，跳过数据库加载");
             return Map.of();
         }
 
         Map<String, ExternalMcpProperties.ConnectionProperties> dbConnections = new LinkedHashMap<>();
-        try (Connection connection = DriverManager.getConnection(
-                databaseProperties.getUrl(),
-                databaseProperties.getUsername(),
-                databaseProperties.getPassword());
-             PreparedStatement statement = connection.prepareStatement(databaseProperties.getQuery());
-             ResultSet resultSet = statement.executeQuery()) {
-
-            while (resultSet.next()) {
-                String name = resultSet.getString("connection_name");
+        try {
+            List<ExternalMcpConnection> rows = externalMcpConnectionService.list();
+            for (ExternalMcpConnection row : rows) {
+                String name = row.getConnectionName();
                 if (!StringUtils.hasText(name)) {
                     continue;
                 }
-                dbConnections.put(name, mapDbConnection(resultSet));
+                dbConnections.put(name, mapDbConnection(row));
             }
             log.info("外部 MCP 数据库加载完成，读取 {} 个连接配置", dbConnections.size());
         }
@@ -113,13 +117,13 @@ public class ExternalMcpConfiguration {
         return dbConnections;
     }
 
-    private ExternalMcpProperties.ConnectionProperties mapDbConnection(ResultSet resultSet) throws Exception {
+    private ExternalMcpProperties.ConnectionProperties mapDbConnection(ExternalMcpConnection dbRow) {
         ExternalMcpProperties.ConnectionProperties connection = new ExternalMcpProperties.ConnectionProperties();
-        connection.setEnabled(resultSet.getBoolean("enabled"));
-        connection.setTransport(resolveTransport(resultSet.getString("transport")));
-        connection.setUrl(resultSet.getString("url"));
-        connection.setEndpoint(resultSet.getString("endpoint"));
-        connection.setHeaders(parseHeaders(resultSet.getString("headers")));
+        connection.setEnabled(Boolean.TRUE.equals(dbRow.getEnabled()));
+        connection.setTransport(resolveTransport(dbRow.getTransport()));
+        connection.setUrl(dbRow.getUrl());
+        connection.setEndpoint(dbRow.getEndpoint());
+        connection.setHeaders(parseHeaders(dbRow.getHeaders()));
         return connection;
     }
 
@@ -158,14 +162,17 @@ public class ExternalMcpConfiguration {
 
     @Bean
     public ToolCallbackProvider externalMcpToolCallbackProvider(ExternalMcpClients externalMcpClients) {
-        if (externalMcpClients.getClients().isEmpty()) {
-            return ToolCallbackProvider.from();
-        }
-
-        return SyncMcpToolCallbackProvider.builder()
-                .mcpClients(externalMcpClients.getClients())
-                .toolNamePrefixGenerator(new DefaultMcpToolNamePrefixGenerator())
-                .build();
+        return () -> {
+            List<McpSyncClient> clients = externalMcpClients.getClients();
+            if (clients.isEmpty()) {
+                return new ToolCallback[0];
+            }
+            return SyncMcpToolCallbackProvider.builder()
+                    .mcpClients(clients)
+                    .toolNamePrefixGenerator(new DefaultMcpToolNamePrefixGenerator())
+                    .build()
+                    .getToolCallbacks();
+        };
     }
 
     private Optional<McpSyncClient> createClient(

@@ -24,12 +24,17 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.annotation.PreDestroy;
+import me.xiaozhi.mcp.external.ExternalMcpClients;
+import me.xiaozhi.mcp.external.ExternalMcpConfiguration;
+import me.xiaozhi.mcp.external.ExternalMcpProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.event.EventListener;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -50,6 +55,9 @@ public class XiaozhiEndpointBridge {
     private final AtomicInteger reconnectAttempt = new AtomicInteger();
     private final AtomicInteger localRequestId = new AtomicInteger(10_000);
     private final Object localLifecycleMonitor = new Object();
+    private final ExternalMcpConfiguration externalMcpConfiguration;
+    private final ExternalMcpClients externalMcpClients;
+    private final ExternalMcpProperties externalMcpProperties;
 
     private volatile WebSocket webSocket;
     private volatile String localSessionId;
@@ -57,8 +65,21 @@ public class XiaozhiEndpointBridge {
     private volatile JsonNode cachedToolsListResult;
 
     public XiaozhiEndpointBridge(XiaozhiBridgeProperties properties, ObjectMapper objectMapper) {
+        this(properties, objectMapper, null, null, null);
+    }
+
+    @Autowired
+    public XiaozhiEndpointBridge(
+            XiaozhiBridgeProperties properties,
+            ObjectMapper objectMapper,
+            @Nullable ExternalMcpConfiguration externalMcpConfiguration,
+            @Nullable ExternalMcpClients externalMcpClients,
+            @Nullable ExternalMcpProperties externalMcpProperties) {
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.externalMcpConfiguration = externalMcpConfiguration;
+        this.externalMcpClients = externalMcpClients;
+        this.externalMcpProperties = externalMcpProperties;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(properties.getConnectTimeout())
                 .build();
@@ -93,6 +114,7 @@ public class XiaozhiEndpointBridge {
     }
 
     private void connectInternal() {
+        refreshExternalMcpBeforeConnect();
         URI endpoint = URI.create(properties.getEndpoint());
         log.info("正在连接小智 MCP 接入点: {}", endpoint);
 
@@ -110,6 +132,18 @@ public class XiaozhiEndpointBridge {
                     reconnectAttempt.set(0);
                     log.info("已连接小智 MCP 接入点");
                 });
+    }
+
+    private void refreshExternalMcpBeforeConnect() {
+        if (externalMcpConfiguration == null || externalMcpClients == null || externalMcpProperties == null) {
+            return;
+        }
+        try {
+            externalMcpConfiguration.refreshExternalMcpClients(externalMcpClients, externalMcpProperties);
+        }
+        catch (Exception ex) {
+            log.error("连接接入点前刷新外部 MCP 失败: {}", ex.getMessage(), ex);
+        }
     }
 
     private Duration nextDelay() {
