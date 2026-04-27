@@ -1,13 +1,13 @@
 server:
   address: 127.0.0.1
   port: 9998
-
+# 下面是发送邮件的配置   可以不用
 spring:
   mail:
     host: smtp.qq.com
     port: 587
-    username: 2597334145@qq.com
-    password: jtgziafwwyrudiac
+    username: 你的qq邮箱
+    password: 你的qq授权码(不是你的密码)
     properties:
       mail:
         smtp:
@@ -33,20 +33,20 @@ spring:
           completion: false
         streamable-http:
           mcp-endpoint: /mcp
-
+# 本地记录一下和获取记录信息使用，可以获取和记录你的个人隐私信息   可以不用
 langchain4j:
   open-ai:
     embedding-model:
       log-requests: true
       log-responses: true
       base-url: https://ai.gitee.com/v1
-      api-key: RB73HOUOZA6P20HHZ4UIM1XIDKD9OQVPK456DGMH
+      api-key: 你的key
       dimensions: 4096
       model-name: Qwen3-Embedding-8B
 xiaozhi:
   bridge:
     enabled: ${XIAOZHI_BRIDGE_ENABLED:true}
-    endpoint: ${XIAOZHI_MCP_ENDPOINT:wss://api.xiaozhi.me/mcp/?token=eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjg3NzE3OSwiYWdlbnRJZCI6MTY5MTg4NywiZW5kcG9pbnRJZCI6ImFnZW50XzE2OTE4ODciLCJwdXJwb3NlIjoibWNwLWVuZHBvaW50IiwiaWF0IjoxNzc1ODQyNDU3LCJleHAiOjE4MDc0MDAwNTd9.LATUXZkfti_MWz8W6WDhidGPf2MVU2WwhaPgNosjVQIQAcUblTCrmApGCZqp17bcVqp_sOZkec1X-iy5v_yHzw}
+    endpoint: ${XIAOZHI_MCP_ENDPOINT:你的小智接入点}
     local-mcp-url: ${XIAOZHI_LOCAL_MCP_URL:http://127.0.0.1:${server.port}/mcp}
     connect-timeout: 10s
     request-timeout: 30s
@@ -58,10 +58,11 @@ xiaozhi:
     initialization-timeout: 30s
     database:
       enabled: ${XIAOZHI_EXTERNAL_DB_ENABLED:true}
-      url: ${XIAOZHI_EXTERNAL_DB_URL:jdbc:mysql://154.9.26.25:3306/ser078176670084?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai}
-      username: ${XIAOZHI_EXTERNAL_DB_USERNAME:ser078176670084}
-      password: ${XIAOZHI_EXTERNAL_DB_PASSWORD:1eKSlXK72vy9}
+      url: ${XIAOZHI_EXTERNAL_DB_URL:你的数据库地址}
+      username: ${XIAOZHI_EXTERNAL_DB_USERNAME:你的数据库用户名}
+      password: ${XIAOZHI_EXTERNAL_DB_PASSWORD:你的数据库密码}
       query: ${XIAOZHI_EXTERNAL_DB_QUERY:SELECT connection_name, enabled, transport, url, endpoint, headers FROM external_mcp_connections}
+      # 可以使用数据库也可以使用下面方式
     # connections:
     #   remote-sse-1:
     #     enabled: ${XIAOZHI_EXTERNAL_REMOTE_SSE_1_ENABLED:true}
@@ -72,6 +73,16 @@ xiaozhi:
     #     headers:
     #       Authorization: ${XIAOZHI_EXTERNAL_REMOTE_SSE_1_AUTH:Bearer sk-d06e47e55f6c4b8f881f2c9d61b68500}
     #       key: ${XIAOZHI_EXTERNAL_REMOTE_SSE_1_KEY:sk-}
+    #   remote-sse-2:
+    #     enabled: ${XIAOZHI_EXTERNAL_REMOTE_SSE_1_ENABLED:true}
+    #     transport: SSE
+    #     url: ${XIAOZHI_EXTERNAL_REMOTE_SSE_1_URL:https://mcp.api-inference.modelscope.net/62d39bd08abe4b/sse}
+    #     # 留空以便从 url 自动推导完整路径: /api/v1/mcps/zhipu-websearch/sse
+    #     endpoint: ${XIAOZHI_EXTERNAL_REMOTE_SSE_1_ENDPOINT:}
+    #     headers:
+    #       Authorization: ${XIAOZHI_EXTERNAL_REMOTE_SSE_1_AUTH:Bearer sk-d06e47e55f6c4b8f881f2c9d61b68500}
+    #       key: ${XIAOZHI_EXTERNAL_REMOTE_SSE_1_KEY:sk-}
+    
 
 logging:
   level:

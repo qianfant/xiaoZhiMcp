@@ -1,0 +1,690 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MCP 管理</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: "Microsoft YaHei", sans-serif;
+    }
+    body {
+      margin: 0;
+      background: #f5f7fb;
+      color: #1f2937;
+    }
+    .container {
+      max-width: 1080px;
+      margin: 24px auto;
+      padding: 0 16px 24px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(17, 24, 39, 0.06);
+      padding: 18px;
+      margin-bottom: 14px;
+    }
+    h1 {
+      margin: 0 0 12px;
+      font-size: 22px;
+    }
+    h2 {
+      margin: 0 0 12px;
+      font-size: 18px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(240px, 1fr));
+      gap: 12px;
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    label {
+      font-size: 13px;
+      color: #374151;
+    }
+    input, select, textarea, button {
+      font: inherit;
+    }
+    input, select, textarea {
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      padding: 8px 10px;
+      background: #fff;
+    }
+    textarea {
+      min-height: 90px;
+      resize: vertical;
+    }
+    .row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    button {
+      border: 0;
+      border-radius: 8px;
+      padding: 8px 14px;
+      cursor: pointer;
+      background: #2563eb;
+      color: #fff;
+    }
+    button.secondary {
+      background: #4b5563;
+    }
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.65;
+    }
+    .status {
+      font-size: 13px;
+      white-space: pre-wrap;
+    }
+    .ok {
+      color: #047857;
+    }
+    .err {
+      color: #b91c1c;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      border-bottom: 1px solid #e5e7eb;
+      padding: 8px;
+      vertical-align: top;
+      text-align: left;
+    }
+    code {
+      background: #f3f4f6;
+      padding: 1px 4px;
+      border-radius: 4px;
+    }
+    .arg-empty {
+      font-size: 13px;
+      color: #4b5563;
+      background: #f9fafb;
+      border: 1px dashed #d1d5db;
+      border-radius: 8px;
+      padding: 10px;
+    }
+    @media (max-width: 768px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="card">
+    <h1>MCP 连接管理</h1>
+    <div class="status" id="globalStatus"></div>
+  </div>
+
+  <div class="card">
+    <h2>新增连接</h2>
+    <div class="grid">
+      <div class="field">
+        <label for="connectionName">连接名称（唯一）</label>
+        <input id="connectionName" placeholder="例如: remote-sse-2">
+      </div>
+      <div class="field">
+        <label for="enabled">是否启用</label>
+        <select id="enabled">
+          <option value="true" selected>启用</option>
+          <option value="false">禁用</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="transport">传输协议</label>
+        <select id="transport">
+          <option value="SSE" selected>SSE</option>
+          <option value="STREAMABLE">STREAMABLE</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="endpoint">Endpoint（可选）</label>
+        <input id="endpoint" placeholder="/mcp 或 /sse，留空自动推导">
+      </div>
+      <div class="field" style="grid-column: 1 / -1;">
+        <label for="url">URL</label>
+        <input id="url" placeholder="https://xxx/mcp 或 https://xxx/sse">
+      </div>
+      <div class="field" style="grid-column: 1 / -1;">
+        <label for="headers">Headers(JSON，可选)</label>
+        <textarea id="headers" placeholder='{"Authorization":"Bearer xxx","key":"xxx"}'></textarea>
+      </div>
+    </div>
+    <div class="row" style="margin-top: 12px;">
+      <button id="btnTest">测试连通性</button>
+      <button id="btnSave">保存到数据库</button>
+      <button id="btnRefresh" class="secondary">刷新运行中 MCP 客户端</button>
+      <button id="btnReload" class="secondary">刷新列表</button>
+    </div>
+    <div class="status" id="actionStatus" style="margin-top:10px;"></div>
+  </div>
+
+  <div class="card">
+    <h2>数据库连接列表</h2>
+    <table>
+      <thead>
+      <tr>
+        <th>ID</th>
+        <th>名称</th>
+        <th>状态</th>
+        <th>协议</th>
+        <th>URL</th>
+        <th>Endpoint</th>
+        <th>Headers</th>
+        <th>操作</th>
+      </tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>工具调用测试（真实执行）</h2>
+    <div class="grid">
+      <div class="field">
+        <label for="invokeTargetType">目标类型</label>
+        <select id="invokeTargetType">
+          <option value="LOCAL" selected>本地 MCP（当前项目）</option>
+          <option value="SAVED">已保存连接（数据库）</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="invokeConnectionId">连接 ID（目标为已保存连接时必选）</label>
+        <select id="invokeConnectionId"></select>
+      </div>
+      <div class="field" style="grid-column: 1 / -1;">
+        <label for="invokeToolName">工具名</label>
+        <select id="invokeToolName">
+          <option value="">请先加载工具列表</option>
+        </select>
+      </div>
+      <div class="field" style="grid-column: 1 / -1;">
+        <label>参数输入（动态生成）</label>
+        <div id="invokeArgsForm" class="grid"></div>
+      </div>
+    </div>
+    <div class="row" style="margin-top: 12px;">
+      <button id="btnLoadTools" class="secondary">加载工具列表</button>
+      <button id="btnInvokeTool">调用工具</button>
+    </div>
+    <div class="status" id="toolListStatus" style="margin-top:8px;"></div>
+    <div class="status" id="invokeStatus" style="margin-top:8px;"></div>
+    <div class="field" style="margin-top:8px;">
+      <label for="invokeResult">调用结果 JSON</label>
+      <textarea id="invokeResult" readonly placeholder="调用成功后会在这里展示完整 JSON"></textarea>
+    </div>
+  </div>
+</div>
+
+<script>
+  const el = {
+    connectionName: document.getElementById('connectionName'),
+    enabled: document.getElementById('enabled'),
+    transport: document.getElementById('transport'),
+    url: document.getElementById('url'),
+    endpoint: document.getElementById('endpoint'),
+    headers: document.getElementById('headers'),
+    actionStatus: document.getElementById('actionStatus'),
+    globalStatus: document.getElementById('globalStatus'),
+    tableBody: document.getElementById('tableBody'),
+    btnTest: document.getElementById('btnTest'),
+    btnSave: document.getElementById('btnSave'),
+    btnRefresh: document.getElementById('btnRefresh'),
+    btnReload: document.getElementById('btnReload'),
+    invokeTargetType: document.getElementById('invokeTargetType'),
+    invokeConnectionId: document.getElementById('invokeConnectionId'),
+    invokeToolName: document.getElementById('invokeToolName'),
+    invokeArgsForm: document.getElementById('invokeArgsForm'),
+    btnLoadTools: document.getElementById('btnLoadTools'),
+    btnInvokeTool: document.getElementById('btnInvokeTool'),
+    toolListStatus: document.getElementById('toolListStatus'),
+    invokeStatus: document.getElementById('invokeStatus'),
+    invokeResult: document.getElementById('invokeResult')
+  };
+  const toolSchemaCache = {};
+  let savedConnections = [];
+
+  function setStatus(target, text, ok) {
+    target.textContent = text || '';
+    target.className = 'status ' + (ok ? 'ok' : 'err');
+  }
+
+  function readHeaders() {
+    const value = (el.headers.value || '').trim();
+    if (!value) return {};
+    const parsed = JSON.parse(value);
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Headers 必须是 JSON 对象');
+    }
+    const out = {};
+    for (const key of Object.keys(parsed)) {
+      out[key] = String(parsed[key]);
+    }
+    return out;
+  }
+
+  function readPayload() {
+    return {
+      connectionName: el.connectionName.value.trim(),
+      enabled: el.enabled.value === 'true',
+      transport: el.transport.value,
+      url: el.url.value.trim(),
+      endpoint: el.endpoint.value.trim(),
+      headers: readHeaders()
+    };
+  }
+
+  async function callApi(url, method, body) {
+    const resp = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      throw new Error('HTTP ' + resp.status);
+    }
+    return data;
+  }
+
+  function toggleButtons(disabled) {
+    el.btnTest.disabled = disabled;
+    el.btnSave.disabled = disabled;
+    el.btnRefresh.disabled = disabled;
+    el.btnReload.disabled = disabled;
+    el.btnLoadTools.disabled = disabled;
+    el.btnInvokeTool.disabled = disabled;
+  }
+
+  function updateInvokeTargetUI() {
+    const isSaved = currentInvokeTarget() === 'SAVED';
+    if (!isSaved) {
+      el.invokeConnectionId.innerHTML = '<option value="LOCAL">LOCAL（本地）</option>';
+      el.invokeConnectionId.value = 'LOCAL';
+    } else {
+      const current = (el.invokeConnectionId.value || '').trim();
+      const options = savedConnections
+        .map(item => `<option value="${item.id}">${item.id} - ${item.connectionName || '-'}</option>`)
+        .join('');
+      el.invokeConnectionId.innerHTML = options || '<option value="">暂无已保存连接</option>';
+      if (current && current !== 'LOCAL') {
+        el.invokeConnectionId.value = current;
+      }
+    }
+  }
+
+  function refreshInvokeConnectionOptions(rows) {
+    savedConnections = rows || [];
+    const current = (el.invokeConnectionId.value || '').trim();
+    const options = savedConnections.map((row) => `<option value="${row.id}">${row.id} - ${row.connectionName || '-'}</option>`).join('');
+    if (current === 'LOCAL') {
+      el.invokeConnectionId.innerHTML = '<option value="LOCAL">LOCAL（本地）</option>';
+      return;
+    }
+    el.invokeConnectionId.innerHTML = options || '<option value="">暂无已保存连接</option>';
+    if (current && current !== 'LOCAL') {
+      el.invokeConnectionId.value = current;
+    }
+  }
+
+  async function loadConnections() {
+    try {
+      const res = await callApi('/api/external-mcp/connections', 'GET');
+      if (!res.success) {
+        throw new Error(res.message || '加载失败');
+      }
+      const rows = res.data || [];
+      refreshInvokeConnectionOptions(rows);
+      el.tableBody.innerHTML = rows.map((row) => `
+        <tr>
+          <td>${row.id ?? ''}</td>
+          <td>${row.connectionName ?? ''}</td>
+          <td>${row.enabled ? '启用' : '禁用'}</td>
+          <td>${row.transport ?? ''}</td>
+          <td><code>${row.url ?? ''}</code></td>
+          <td><code>${row.endpoint ?? ''}</code></td>
+          <td><code>${JSON.stringify(row.headers || {})}</code></td>
+          <td>
+            <button class="secondary btn-test-saved" data-id="${row.id}" data-name="${row.connectionName ?? ''}">测试</button>
+            <button class="secondary btn-delete-saved" data-id="${row.id}" data-name="${row.connectionName ?? ''}">删除</button>
+          </td>
+        </tr>
+      `).join('');
+      setStatus(el.globalStatus, '当前共 ' + rows.length + ' 条连接配置', true);
+    } catch (error) {
+      setStatus(el.globalStatus, '加载连接列表失败: ' + error.message, false);
+    }
+  }
+
+  async function onTest() {
+    try {
+      toggleButtons(true);
+      const payload = readPayload();
+      if (!payload.url) throw new Error('URL 不能为空');
+      const res = await callApi('/api/external-mcp/connections/test', 'POST', {
+        transport: payload.transport,
+        url: payload.url,
+        endpoint: payload.endpoint,
+        headers: payload.headers
+      });
+      if (!res.success) {
+        const msg = res.data && res.data.message ? res.data.message : (res.message || '测试失败');
+        setStatus(el.actionStatus, '连通失败: ' + msg, false);
+        return;
+      }
+      const data = res.data || {};
+      setStatus(el.actionStatus, '连通成功: server=' + (data.serverName || '-') + ', tools=' + (data.toolCount ?? 0), true);
+    } catch (error) {
+      setStatus(el.actionStatus, '连通测试异常: ' + error.message, false);
+    } finally {
+      toggleButtons(false);
+    }
+  }
+
+  async function onSave() {
+    try {
+      toggleButtons(true);
+      const payload = readPayload();
+      if (!payload.connectionName) throw new Error('连接名称不能为空');
+      if (!payload.url) throw new Error('URL 不能为空');
+      const res = await callApi('/api/external-mcp/connections', 'POST', payload);
+      if (!res.success) {
+        throw new Error(res.message || '保存失败');
+      }
+      setStatus(el.actionStatus, '保存成功，已刷新运行中 MCP 客户端', true);
+      await loadConnections();
+    } catch (error) {
+      setStatus(el.actionStatus, '保存失败: ' + error.message, false);
+    } finally {
+      toggleButtons(false);
+    }
+  }
+
+  async function onRefreshRuntime() {
+    try {
+      toggleButtons(true);
+      const res = await callApi('/api/external-mcp/connections/refresh', 'POST');
+      if (!res.success) {
+        throw new Error(res.message || '刷新失败');
+      }
+      setStatus(el.actionStatus, '运行中 MCP 客户端已刷新', true);
+    } catch (error) {
+      setStatus(el.actionStatus, '刷新失败: ' + error.message, false);
+    } finally {
+      toggleButtons(false);
+    }
+  }
+
+  async function onTestSaved(id, connectionName) {
+    try {
+      toggleButtons(true);
+      const res = await callApi('/api/external-mcp/connections/' + id + '/test', 'POST');
+      if (!res.success) {
+        const msg = res.data && res.data.message ? res.data.message : (res.message || '测试失败');
+        setStatus(el.actionStatus, '已保存连接测试失败(' + connectionName + '): ' + msg, false);
+        return;
+      }
+      const data = res.data || {};
+      const name = data.connectionName || connectionName || ('ID=' + id);
+      setStatus(el.actionStatus, '已保存连接测试成功(' + name + '): server=' + (data.serverName || '-') + ', tools=' + (data.toolCount ?? 0), true);
+    } catch (error) {
+      setStatus(el.actionStatus, '已保存连接测试异常: ' + error.message, false);
+    } finally {
+      toggleButtons(false);
+    }
+  }
+
+  function currentInvokeTarget() {
+    return el.invokeTargetType.value === 'SAVED' ? 'SAVED' : 'LOCAL';
+  }
+
+  function createDefaultValue(type) {
+    if (type === 'number' || type === 'integer') return 0;
+    if (type === 'boolean') return false;
+    if (type === 'array') return [];
+    if (type === 'object') return {};
+    return '';
+  }
+
+  function getParamLabel(key, def) {
+    const desc = def && typeof def.description === 'string' ? def.description.trim() : '';
+    return desc ? (desc + '（' + key + '）') : key;
+  }
+
+  function formatRequiredParams(toolMeta) {
+    const required = toolMeta.requiredParams || [];
+    const schema = toolMeta.inputSchema || {};
+    const properties = schema.properties || {};
+    return required.map((key) => getParamLabel(key, properties[key] || {}));
+  }
+
+  function renderToolArgsForm(toolMeta) {
+    el.invokeArgsForm.innerHTML = '';
+    const schema = toolMeta && toolMeta.inputSchema ? toolMeta.inputSchema : {};
+    const properties = schema.properties || {};
+    const requiredSet = new Set((toolMeta && toolMeta.requiredParams) || []);
+    const keys = Object.keys(properties);
+    if (keys.length === 0) {
+      const tip = document.createElement('div');
+      tip.className = 'arg-empty';
+      tip.textContent = '当前工具无参数，将自动提交 {}';
+      el.invokeArgsForm.appendChild(tip);
+      return;
+    }
+    keys.forEach((key) => {
+      const def = properties[key] || {};
+      const type = def.type || 'string';
+      const field = document.createElement('div');
+      field.className = 'field';
+      const label = document.createElement('label');
+      const labelText = getParamLabel(key, def);
+      label.textContent = requiredSet.has(key) ? (labelText + '（必填）') : labelText;
+      field.appendChild(label);
+
+      let input;
+      if (type === 'boolean') {
+        input = document.createElement('select');
+        input.innerHTML = '<option value="false">false</option><option value="true">true</option>';
+      } else if (type === 'array' || type === 'object') {
+        input = document.createElement('textarea');
+        input.value = JSON.stringify(createDefaultValue(type), null, 2);
+      } else {
+        input = document.createElement('input');
+        input.type = type === 'number' || type === 'integer' ? 'number' : 'text';
+        input.value = String(createDefaultValue(type));
+      }
+      input.setAttribute('data-arg-key', key);
+      input.setAttribute('data-arg-type', type);
+      input.setAttribute('data-arg-required', requiredSet.has(key) ? 'true' : 'false');
+      if (def.description) {
+        input.placeholder = String(def.description);
+      }
+      field.appendChild(input);
+      el.invokeArgsForm.appendChild(field);
+    });
+  }
+
+  function readInvokeArgs() {
+    const fields = el.invokeArgsForm.querySelectorAll('[data-arg-key]');
+    if (!fields.length) return {};
+    const args = {};
+    for (const field of fields) {
+      const key = field.getAttribute('data-arg-key') || '';
+      const type = field.getAttribute('data-arg-type') || 'string';
+      const required = field.getAttribute('data-arg-required') === 'true';
+      const raw = (field.value || '').trim();
+      if (!key) continue;
+      if (required && raw === '' && (type === 'string' || type === 'number' || type === 'integer')) {
+        throw new Error('参数“' + key + '”不能为空');
+      }
+      if (type === 'number') {
+        args[key] = raw === '' ? 0 : Number(raw);
+        continue;
+      }
+      if (type === 'integer') {
+        args[key] = raw === '' ? 0 : parseInt(raw, 10);
+        continue;
+      }
+      if (type === 'boolean') {
+        args[key] = raw === 'true';
+        continue;
+      }
+      if (type === 'array' || type === 'object') {
+        if (raw === '') {
+          args[key] = createDefaultValue(type);
+          continue;
+        }
+        const parsed = JSON.parse(raw);
+        if (type === 'array' && !Array.isArray(parsed)) {
+          throw new Error('参数“' + key + '”必须是 JSON 数组');
+        }
+        if (type === 'object' && (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed))) {
+          throw new Error('参数“' + key + '”必须是 JSON 对象');
+        }
+        args[key] = parsed;
+        continue;
+      }
+      args[key] = raw;
+    }
+    return args;
+  }
+
+  function applyToolArgsTemplate() {
+    const name = (el.invokeToolName.value || '').trim();
+    const meta = toolSchemaCache[name];
+    renderToolArgsForm(meta);
+  }
+
+  async function onLoadTools() {
+    try {
+      toggleButtons(true);
+      const target = currentInvokeTarget();
+      let url = '/api/external-mcp/tools/local';
+      if (target === 'SAVED') {
+        const id = (el.invokeConnectionId.value || '').trim();
+        if (!id) throw new Error('请先填写连接 ID');
+        url = '/api/external-mcp/connections/' + id + '/tools';
+      }
+      const res = await callApi(url, 'GET');
+      if (!res.success) throw new Error(res.message || '加载工具列表失败');
+      const data = res.data || {};
+      const tools = data.tools || [];
+      el.invokeResult.value = '';
+      Object.keys(toolSchemaCache).forEach((key) => delete toolSchemaCache[key]);
+      const desc = tools.map(item => {
+        const required = formatRequiredParams(item).join('、');
+        toolSchemaCache[item.name] = item;
+        return item.name + (required ? '(必填:' + required + ')' : '');
+      }).join(' | ');
+      const toolOptions = tools.map(item => `<option value="${item.name}">${item.name}</option>`).join('');
+      el.invokeToolName.innerHTML = toolOptions || '<option value="">无可用工具</option>';
+      setStatus(
+        el.toolListStatus,
+        '连接[' + (data.connectionId || '-') + '/' + (data.connectionName || '-') + '] 工具(' + tools.length + '): ' + (desc || '无'),
+        true
+      );
+      applyToolArgsTemplate();
+    } catch (error) {
+      setStatus(el.toolListStatus, '加载工具列表失败: ' + error.message, false);
+    } finally {
+      toggleButtons(false);
+    }
+  }
+
+  async function onInvokeTool() {
+    try {
+      toggleButtons(true);
+      const target = currentInvokeTarget();
+      const toolName = (el.invokeToolName.value || '').trim();
+      if (!toolName) throw new Error('工具名不能为空');
+      const args = readInvokeArgs();
+      let url = '/api/external-mcp/tools/local/invoke';
+      if (target === 'SAVED') {
+        const id = (el.invokeConnectionId.value || '').trim();
+        if (!id) throw new Error('请先填写连接 ID');
+        url = '/api/external-mcp/connections/' + id + '/tools/invoke';
+      }
+      const res = await callApi(url, 'POST', { toolName: toolName, arguments: args });
+      if (!res.success) {
+        const msg = res.data && res.data.message ? res.data.message : (res.message || '调用失败');
+        setStatus(el.invokeStatus, '调用失败: ' + msg, false);
+        el.invokeResult.value = JSON.stringify({ success: false, message: msg, data: res.data || null }, null, 2);
+        return;
+      }
+      const data = res.data || {};
+      const successJson = {
+        success: true,
+        message: '调用成功',
+        data: data
+      };
+      setStatus(el.invokeStatus, '调用成功', true);
+      el.invokeResult.value = JSON.stringify(successJson, null, 2);
+    } catch (error) {
+      setStatus(el.invokeStatus, '调用异常: ' + error.message, false);
+      el.invokeResult.value = JSON.stringify({ success: false, message: error.message }, null, 2);
+    } finally {
+      toggleButtons(false);
+    }
+  }
+
+  async function onDeleteSaved(id, connectionName) {
+    try {
+      toggleButtons(true);
+      const res = await callApi('/api/external-mcp/connections/' + id, 'DELETE');
+      if (!res.success) {
+        throw new Error(res.message || '删除失败');
+      }
+      setStatus(el.actionStatus, '删除成功(' + connectionName + ')，并已刷新运行中 MCP 客户端', true);
+      await loadConnections();
+      updateInvokeTargetUI();
+    } catch (error) {
+      setStatus(el.actionStatus, '删除失败: ' + error.message, false);
+    } finally {
+      toggleButtons(false);
+    }
+  }
+
+  el.btnTest.addEventListener('click', onTest);
+  el.btnSave.addEventListener('click', onSave);
+  el.btnRefresh.addEventListener('click', onRefreshRuntime);
+  el.btnReload.addEventListener('click', loadConnections);
+  el.btnLoadTools.addEventListener('click', onLoadTools);
+  el.btnInvokeTool.addEventListener('click', onInvokeTool);
+  el.invokeTargetType.addEventListener('change', updateInvokeTargetUI);
+  el.invokeToolName.addEventListener('change', applyToolArgsTemplate);
+  el.tableBody.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (target.classList.contains('btn-test-saved')) {
+      const id = target.getAttribute('data-id');
+      if (!id) return;
+      const name = target.getAttribute('data-name') || '';
+      onTestSaved(id, name);
+      return;
+    }
+    if (target.classList.contains('btn-delete-saved')) {
+      const id = target.getAttribute('data-id');
+      const name = target.getAttribute('data-name') || '';
+      if (!id) return;
+      onDeleteSaved(id, name);
+    }
+  });
+  updateInvokeTargetUI();
+  loadConnections();
+</script>
+</body>
+</html>
