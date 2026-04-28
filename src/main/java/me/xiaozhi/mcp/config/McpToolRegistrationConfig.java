@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -44,11 +45,14 @@ public class McpToolRegistrationConfig {
     }
 
     @Bean
-    public EmbeddingStore<TextSegment> qdEmbeddingStore() {
+    public EmbeddingStore<TextSegment> qdEmbeddingStore(
+            @Value("${qdrant.host}") String host,
+            @Value("${qdrant.port}") int port,
+            @Value("${qdrant.collection-name}") String collectionName) {
         return QdrantEmbeddingStore.builder()
-                .host("154.193.217.93")
-                .port(6334)
-                .collectionName("test-qdrant")
+                .host(host)
+                .port(port)
+                .collectionName(collectionName)
                 .build();
     }
 }
