@@ -116,6 +116,21 @@
       border-radius: 8px;
       padding: 10px;
     }
+    .panel {
+      background: #f8fafc;
+      border: 1px solid #dbe3f0;
+      border-radius: 8px;
+      padding: 10px;
+    }
+    .tool-list-container {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .tool-list-item {
+      white-space: pre-wrap;
+      font-size: 13px;
+    }
     @media (max-width: 768px) {
       .grid {
         grid-template-columns: 1fr;
@@ -221,8 +236,10 @@
       <button id="btnLoadTools" class="secondary">加载工具列表</button>
       <button id="btnInvokeTool">调用工具</button>
     </div>
-    <div class="status" id="toolListStatus" style="margin-top:8px;"></div>
-    <div class="status" id="invokeStatus" style="margin-top:8px;"></div>
+    <div id="toolListStatus" class="tool-list-container" style="margin-top:8px;"></div>
+    <div class="panel" style="margin-top:8px;">
+      <div class="status" id="invokeStatus"></div>
+    </div>
     <div class="field" style="margin-top:8px;">
       <label for="invokeResult">调用结果 JSON</label>
       <textarea id="invokeResult" readonly placeholder="调用成功后会在这里展示完整 JSON"></textarea>
@@ -261,6 +278,54 @@
   function setStatus(target, text, ok) {
     target.textContent = text || '';
     target.className = 'status ' + (ok ? 'ok' : 'err');
+  }
+
+  function autoResizeTextarea(textarea) {
+    if (!textarea) return;
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.max(textarea.scrollHeight, 90) + 'px';
+  }
+
+  function setInvokeResult(value) {
+    el.invokeResult.value = value || '';
+    autoResizeTextarea(el.invokeResult);
+  }
+
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function appendToolListBoard(text, ok) {
+    const item = document.createElement('div');
+    item.className = 'panel tool-list-item ' + (ok ? 'ok' : 'err');
+    item.textContent = text || '';
+    el.toolListStatus.appendChild(item);
+  }
+
+  function setToolListMessage(text, ok) {
+    el.toolListStatus.innerHTML = '';
+    appendToolListBoard(text, ok);
+  }
+
+  async function renderToolListLineByLine(connectionId, connectionName, tools) {
+    const list = Array.isArray(tools) ? tools : [];
+    const total = list.length;
+    el.toolListStatus.innerHTML = '';
+    if (total === 0) {
+      appendToolListBoard('连接[0/0] 工具: 无（连接=' + (connectionId || '-') + '/' + (connectionName || '-') + '）', true);
+      return;
+    }
+    const baseDelay = total <= 60 ? 35 : (total <= 500 ? 8 : 1);
+    for (let i = 0; i < total; i++) {
+      const item = list[i] || {};
+      const required = formatRequiredParams(item).join('、');
+      const toolDesc = item.name + (required ? '(必填:' + required + ')' : '');
+      appendToolListBoard('连接[' + (i + 1) + '/' + total + '] 工具: ' + toolDesc, true);
+      if (baseDelay > 0) {
+        await sleep(baseDelay);
+      }
+    }
+    appendToolListBoard('总计: ' + total + ' 个工具（连接=' + (connectionId || '-') + '/' + (connectionName || '-') + '）', true);
   }
 
   function readHeaders() {
@@ -583,23 +648,17 @@
       if (!res.success) throw new Error(res.message || '加载工具列表失败');
       const data = res.data || {};
       const tools = data.tools || [];
-      el.invokeResult.value = '';
+      setInvokeResult('');
       Object.keys(toolSchemaCache).forEach((key) => delete toolSchemaCache[key]);
-      const desc = tools.map(item => {
-        const required = formatRequiredParams(item).join('、');
+      tools.forEach((item) => {
         toolSchemaCache[item.name] = item;
-        return item.name + (required ? '(必填:' + required + ')' : '');
-      }).join(' | ');
+      });
       const toolOptions = tools.map(item => `<option value="${item.name}">${item.name}</option>`).join('');
       el.invokeToolName.innerHTML = toolOptions || '<option value="">无可用工具</option>';
-      setStatus(
-        el.toolListStatus,
-        '连接[' + (data.connectionId || '-') + '/' + (data.connectionName || '-') + '] 工具(' + tools.length + '): ' + (desc || '无'),
-        true
-      );
+      await renderToolListLineByLine(data.connectionId || '-', data.connectionName || '-', tools);
       applyToolArgsTemplate();
     } catch (error) {
-      setStatus(el.toolListStatus, '加载工具列表失败: ' + error.message, false);
+      setToolListMessage('加载工具列表失败: ' + error.message, false);
     } finally {
       toggleButtons(false);
     }
@@ -622,7 +681,7 @@
       if (!res.success) {
         const msg = res.data && res.data.message ? res.data.message : (res.message || '调用失败');
         setStatus(el.invokeStatus, '调用失败: ' + msg, false);
-        el.invokeResult.value = JSON.stringify({ success: false, message: msg, data: res.data || null }, null, 2);
+        setInvokeResult(JSON.stringify({ success: false, message: msg, data: res.data || null }, null, 2));
         return;
       }
       const data = res.data || {};
@@ -632,10 +691,10 @@
         data: data
       };
       setStatus(el.invokeStatus, '调用成功', true);
-      el.invokeResult.value = JSON.stringify(successJson, null, 2);
+      setInvokeResult(JSON.stringify(successJson, null, 2));
     } catch (error) {
       setStatus(el.invokeStatus, '调用异常: ' + error.message, false);
-      el.invokeResult.value = JSON.stringify({ success: false, message: error.message }, null, 2);
+      setInvokeResult(JSON.stringify({ success: false, message: error.message }, null, 2));
     } finally {
       toggleButtons(false);
     }
@@ -666,6 +725,7 @@
   el.btnInvokeTool.addEventListener('click', onInvokeTool);
   el.invokeTargetType.addEventListener('change', updateInvokeTargetUI);
   el.invokeToolName.addEventListener('change', applyToolArgsTemplate);
+  autoResizeTextarea(el.invokeResult);
   el.tableBody.addEventListener('click', (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;

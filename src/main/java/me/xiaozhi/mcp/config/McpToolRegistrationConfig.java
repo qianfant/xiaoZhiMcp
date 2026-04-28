@@ -6,6 +6,9 @@ import java.util.List;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.store.embedding.EmbeddingStore;
 import dev.langchain4j.store.embedding.qdrant.QdrantEmbeddingStore;
+import io.qdrant.client.QdrantClient;
+import io.qdrant.client.QdrantGrpcClient;
+import io.qdrant.client.grpc.Collections;
 import me.xiaozhi.mcp.tool.DemoMcpTools;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,5 +57,18 @@ public class McpToolRegistrationConfig {
                 .port(port)
                 .collectionName(collectionName)
                 .build();
+    }
+
+    public static void main(String[] args) {
+        QdrantGrpcClient.Builder grpcClientBuilder =
+                QdrantGrpcClient.newBuilder("你的Qdrant主机地址", 6334, false);
+        try (QdrantClient qdrantClient = new QdrantClient(grpcClientBuilder.build())) {
+            var vectorParams = Collections.VectorParams.newBuilder()
+                    .setDistance(Collections.Distance.Cosine)
+//                .set
+                    .setSize(4096)
+                    .build();
+            qdrantClient.createCollectionAsync("test-qdrant", vectorParams);
+        }
     }
 }
