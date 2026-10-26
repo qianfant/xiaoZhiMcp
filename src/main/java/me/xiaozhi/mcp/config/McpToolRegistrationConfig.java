@@ -61,7 +61,7 @@ public class McpToolRegistrationConfig {
 
     public static void main(String[] args) {
         QdrantGrpcClient.Builder grpcClientBuilder =
-                QdrantGrpcClient.newBuilder("你的Qdrant主机地址", 6334, false);
+                QdrantGrpcClient.newBuilder("186.241.81.202", 6334, false);
         try (QdrantClient qdrantClient = new QdrantClient(grpcClientBuilder.build())) {
             var vectorParams = Collections.VectorParams.newBuilder()
                     .setDistance(Collections.Distance.Cosine)

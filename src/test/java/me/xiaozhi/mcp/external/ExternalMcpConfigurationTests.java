@@ -9,6 +9,13 @@ class ExternalMcpConfigurationTests {
     private final ExternalMcpConfiguration configuration = new ExternalMcpConfiguration();
 
     @Test
+    void rootEndpointMustRetainQueryCredentials() {
+        var connection = new ExternalMcpProperties.ConnectionProperties();
+        connection.setUrl("https://example.test/?token=example");
+        assertThat(configuration.resolveEndpoint(connection).endpoint()).isEqualTo("/mcp?token=example");
+    }
+
+    @Test
     void shouldDeriveSseEndpointFromUrlPath() {
         ExternalMcpProperties.ConnectionProperties connection = new ExternalMcpProperties.ConnectionProperties();
         connection.setUrl("http://localhost:9998/sse");

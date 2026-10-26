@@ -38,7 +38,8 @@ import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-@Component
+// Legacy single-user implementation retained for protocol regression tests only.
+// Production nodes are managed by TenantNodeManager with explicit tenant dispatch.
 @EnableConfigurationProperties(XiaozhiBridgeProperties.class)
 @ConditionalOnProperty(prefix = "xiaozhi.bridge", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class XiaozhiEndpointBridge {

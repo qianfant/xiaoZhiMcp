@@ -1,155 +1,44 @@
 # MCP 管理接口与页面说明
 
-## 1. 功能概览
+参见 [README.md](README.md) 获取安装、旧库迁移及完整配置说明。
 
-当前项目已实现一套完整的 MCP 管理与测试能力，包含：
+页面入口：`/login.html`，登录后进入 `/mcp-admin.html`。界面包含小智节点、外部 MCP、工具测试、账号设置，管理员另有用户管理。
 
-- 外部 MCP 连接配置的新增、列表、删除、刷新
-- MCP 连通性测试（临时连接 / 已保存连接）
-- 工具列表加载（本地 LOCAL / 已保存外部连接）
-- 工具真实调用并返回 JSON 结果
-- 根据工具参数 schema 动态生成参数输入表单（支持中文描述展示）
+响应格式：成功 `{ "success": true, "data": ... }`，失败 `{ "success": false, "message": "..." }` 并返回相应 HTTP 状态。连接/节点/用户 ID 为服务端分配。
 
-相关核心文件：
+| 接口 | 功能 |
+| --- | --- |
+| GET /api/auth/csrf | 获取 CSRF token（data.token），写操作使用 X-CSRF-TOKEN 请求头 |
+| GET /api/auth/options | 查询是否开放注册 |
+| POST /api/auth/login | username、password 登录；客户端保存会话 Cookie，成功后重新获取 CSRF token |
+| POST /api/auth/register | 注册普通用户（需服务端开放） |
+| GET /api/auth/me | 当前用户 |
+| POST /api/auth/logout | 退出当前会话 |
+| POST /api/auth/password | oldPassword、newPassword 修改自己的密码 |
+| GET /api/admin/users?page=1 | 管理员用户列表，每页 50 条 |
+| POST /api/admin/users | username、password、role、enabled 创建用户 |
+| PATCH /api/admin/users/{id} | role、enabled、password 可选，调整用户；至少保留一个启用的管理员 |
+| GET /api/external-mcp/connections | 当前用户全部连接（最多 100 个） |
+| POST /api/external-mcp/connections | 创建自己的连接 |
+| PUT /api/external-mcp/connections/{id} | 编辑自己的连接 |
+| DELETE /api/external-mcp/connections/{id} | 删除自己的连接并清理客户端 |
+| POST /api/external-mcp/connections/test | 测试未保存的配置，字段同保存配置；connectionName 可传 draft-test |
+| POST /api/external-mcp/connections/{id}/test | 测试已有连接 |
+| POST /api/external-mcp/connections/refresh | 清理当前用户的客户端和工具缓存 |
+| GET /api/external-mcp/tools/local | 本地工具目录 |
+| GET /api/external-mcp/connections/{id}/tools | 自己的外部连接工具目录 |
+| POST /api/external-mcp/tools/local/invoke | 本地真实工具调用 |
+| POST /api/external-mcp/connections/{id}/tools/invoke | 外部真实工具调用 |
+| GET /api/nodes | 自己的节点和运行状态 |
+| POST /api/nodes | 创建节点，提交 name、endpoint、enabled、localTools、connectionIds 数组 |
+| PUT /api/nodes/{id} | 编辑自己的节点，替换绑定与配置 |
+| DELETE /api/nodes/{id} | 删除并停止节点 |
+| POST /api/nodes/{id}/reconnect | 重连自己的节点 |
 
-- `src/main/java/me/xiaozhi/mcp/external/ExternalMcpAdminController.java`
-- `src/main/java/me/xiaozhi/mcp/external/ExternalMcpConnectivityService.java`
-- `src/main/resources/static/mcp-admin.html`
+连接保存字段：`connectionName`、`enabled`、`transport`（SSE/STREAMABLE）、`url`、可选 `endpoint`、`headers`（字符串键值对象）。读取时 `headers` 为数据库 JSON 字符串。
 
----
+工具调用字段：`toolName` 和 `arguments` 对象。工具目录在 `data.tools`，调用结果为 MCP 的 `content`、`isError` 等字段。`isError=true` 表示远端工具业务执行错误，应展示完整结果。
 
-## 2. 后端接口清单
+节点列表结构：`data` 是 `{ node: {...}, runtime: {state, message} }` 数组；state 为 CONNECTING / CONNECTED / RECONNECTING / STOPPED。节点 `connectionIds` 读取为 JSON 字符串，保存时提交数组。接入点及请求头包含凭证，仅返回所属用户，前端列表只展示主机名。
 
-Base Path：`/api/external-mcp`
-
-### 2.1 连接管理
-
-1. `GET /connections`
-- 作用：获取数据库中外部 MCP 连接列表
-
-2. `POST /connections`
-- 作用：新增连接并刷新运行中的 MCP 客户端
-- 入参：
-```json
-{
-  "connectionName": "remote-sse-2",
-  "enabled": true,
-  "transport": "SSE",
-  "url": "https://xxx/mcp",
-  "endpoint": "/mcp",
-  "headers": {
-    "Authorization": "Bearer xxx"
-  }
-}
-```
-
-3. `DELETE /connections/{id}`
-- 作用：删除外部连接并刷新运行中的 MCP 客户端
-
-4. `POST /connections/refresh`
-- 作用：手动刷新运行中的 MCP 客户端
-
-### 2.2 连通性测试
-
-1. `POST /connections/test`
-- 作用：测试临时连接（不入库）
-
-2. `POST /connections/{id}/test`
-- 作用：测试已保存连接
-
-### 2.3 工具列表与调用
-
-1. `GET /tools/local`
-- 作用：加载本地工具列表（连接 ID 固定为 `LOCAL`）
-- 说明：已按本地工具名做过滤，不会展示外部 MCP 工具
-
-2. `GET /connections/{id}/tools`
-- 作用：加载指定已保存连接的工具列表
-
-3. `POST /tools/local/invoke`
-- 作用：调用本地工具
-
-4. `POST /connections/{id}/tools/invoke`
-- 作用：调用指定已保存连接的工具
-
-调用入参示例：
-```json
-{
-  "toolName": "获取今天星期几",
-  "arguments": {}
-}
-```
-
----
-
-## 3. 前端页面说明（mcp-admin.html）
-
-页面路径：`/mcp-admin.html`
-
-### 3.1 连接区
-
-- 新增连接：填写连接名、协议、URL、endpoint、headers 后保存
-- 测试连通性：可先验证连通
-- 刷新运行中客户端：触发后端 refresh 接口
-- 数据库连接列表操作：
-  - `测试`
-  - `删除`
-
-### 3.2 工具调用区
-
-- 目标类型：
-  - `LOCAL`（本地 MCP）
-  - `SAVED`（已保存连接）
-- 连接 ID：已改为下拉框（SAVED 模式下选择）
-- 工具名：已改为下拉框（加载工具后选择）
-- 参数输入：已改为动态表单（替代“参数 JSON 文本框”）
-- 调用结果：统一在“调用结果 JSON”文本区展示
-
----
-
-## 4. 动态参数表单规则
-
-前端从工具 `inputSchema` 动态渲染参数输入项：
-
-- 标签文案优先显示中文描述（`description`），格式：`描述（参数名）`
-  - 示例：`记录内容（message）`
-- 必填字段在标签后追加 `（必填）`
-- 类型映射：
-  - `string` -> 文本输入框
-  - `number` / `integer` -> 数字输入框
-  - `boolean` -> 下拉框（true/false）
-  - `array` / `object` -> 文本域（JSON）
-- 无参数工具：显示提示“当前工具无参数，将自动提交 {}”
-
-提交调用时，前端会把动态表单聚合为 `arguments` 对象并发给后端。
-
----
-
-## 5. LOCAL 工具过滤说明
-
-`/tools/local` 接口会对工具列表做本地过滤：
-
-- 通过 `DemoMcpTools` 上 `@Tool` 注解提取本地工具名集合
-- 仅保留名称命中的工具
-- 解决了“LOCAL 加载工具时混入外部 MCP 工具”的问题
-
----
-
-## 6. 常见调用流程
-
-1. 打开 `/mcp-admin.html`
-2. 在“新增连接”中配置并保存外部连接
-3. 在“工具调用测试”中选择目标类型：
-- LOCAL：直接加载本地工具并调用
-- SAVED：先选连接 ID，再加载工具并调用
-4. 选择工具后填写（或确认自动生成的）参数
-5. 点击“调用工具”，在调用结果 JSON 区查看结果
-
----
-
-## 7. 备注
-
-- 连接名需要唯一，否则保存失败
-- URL 为空会被后端校验拦截
-- 工具调用失败时，返回结构中会包含失败原因（message）
-
+所有 ID 访问和绑定均检查当前账号归属，跨账号返回 404。原始共享 `/mcp` 接口禁止访问；小智从各自独立的 WebSocket 节点调用用户范围内的工具。

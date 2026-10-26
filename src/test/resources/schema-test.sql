@@ -1,0 +1,20 @@
+CREATE TABLE app_locks (id BIGINT PRIMARY KEY);
+INSERT INTO app_locks VALUES (1);
+CREATE TABLE app_users (
+ id BIGINT AUTO_INCREMENT PRIMARY KEY, username VARCHAR(64) NOT NULL UNIQUE,
+ password_hash VARCHAR(100) NOT NULL, role VARCHAR(16) NOT NULL, enabled BOOLEAN NOT NULL,
+ auth_version INT NOT NULL DEFAULT 0
+);
+CREATE TABLE external_mcp_connections (
+ id BIGINT AUTO_INCREMENT PRIMARY KEY, owner_id BIGINT REFERENCES app_users(id),
+ connection_name VARCHAR(128) NOT NULL, enabled BOOLEAN NOT NULL,
+ transport VARCHAR(32) NOT NULL, url VARCHAR(2048) NOT NULL, endpoint VARCHAR(255), headers VARCHAR(16384),
+ created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+ UNIQUE(owner_id, connection_name)
+);
+CREATE TABLE xiaozhi_nodes (
+ id BIGINT AUTO_INCREMENT PRIMARY KEY, owner_id BIGINT NOT NULL REFERENCES app_users(id),
+ name VARCHAR(128) NOT NULL, endpoint VARCHAR(2048) NOT NULL, endpoint_hash CHAR(64) NOT NULL UNIQUE,
+ enabled BOOLEAN NOT NULL, local_tools BOOLEAN NOT NULL, connection_ids VARCHAR(16384) NOT NULL,
+ UNIQUE(owner_id, name)
+);

@@ -1,3 +1,25 @@
 spring:
   profiles:
-    active: dev
+    active: ${SPRING_PROFILES_ACTIVE:prod}
+  servlet:
+    multipart:
+      max-request-size: 1MB
+server:
+  servlet:
+    session:
+      timeout: 8h
+      cookie:
+        http-only: true
+        same-site: strict
+        secure: ${XIAOZHI_COOKIE_SECURE:false}
+  tomcat:
+    max-http-form-post-size: 1MB
+    threads:
+      max: 100
+xiaozhi:
+  security:
+    admin-username: ${XIAOZHI_ADMIN_USERNAME:admin}
+    admin-password: ${XIAOZHI_ADMIN_PASSWORD:}
+    registration-enabled: ${XIAOZHI_REGISTRATION_ENABLED:false}
+  runtime:
+    max-clients: ${XIAOZHI_MAX_MCP_CLIENTS:256}

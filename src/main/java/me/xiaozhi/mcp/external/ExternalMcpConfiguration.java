@@ -1,257 +1,34 @@
 package me.xiaozhi.mcp.external;
 
 import java.net.URI;
-import java.net.http.HttpRequest;
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import io.modelcontextprotocol.client.McpClient;
-import io.modelcontextprotocol.client.McpSyncClient;
-import io.modelcontextprotocol.client.transport.HttpClientSseClientTransport;
-import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
-import io.modelcontextprotocol.spec.McpClientTransport;
-import io.modelcontextprotocol.spec.McpSchema;
-import me.xiaozhi.mcp.external.entity.ExternalMcpConnection;
-import me.xiaozhi.mcp.external.service.ExternalMcpConnectionService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.ai.mcp.DefaultMcpToolNamePrefixGenerator;
-import org.springframework.ai.mcp.SyncMcpToolCallbackProvider;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.*;
 import org.springframework.util.StringUtils;
 
 @Configuration
 @EnableConfigurationProperties(ExternalMcpProperties.class)
 public class ExternalMcpConfiguration {
-
-    private static final Logger log = LoggerFactory.getLogger(ExternalMcpConfiguration.class);
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    @Autowired(required = false)
-    private ExternalMcpConnectionService externalMcpConnectionService;
-
-    @Bean(destroyMethod = "close")
-    public ExternalMcpClients externalMcpClients(ExternalMcpProperties properties) {
-        return new ExternalMcpClients(createClients(properties));
-    }
-
-    public void refreshExternalMcpClients(ExternalMcpClients externalMcpClients, ExternalMcpProperties properties) {
-        List<McpSyncClient> refreshedClients = createClients(properties);
-        externalMcpClients.replaceClients(refreshedClients);
-        log.info("外部 MCP 客户端刷新完成，当前已接入 {} 个", refreshedClients.size());
-    }
-
-    private List<McpSyncClient> createClients(ExternalMcpProperties properties) {
-        List<McpSyncClient> clients = new ArrayList<>();
-        Map<String, ExternalMcpProperties.ConnectionProperties> allConnections = loadConnections(properties);
-        int totalConnections = allConnections.size();
-
-        for (Map.Entry<String, ExternalMcpProperties.ConnectionProperties> entry : allConnections.entrySet()) {
-            String connectionName = entry.getKey();
-            ExternalMcpProperties.ConnectionProperties connection = entry.getValue();
-            String transport = connection.getTransport() == null ? "null" : connection.getTransport().name();
-            log.info("外部 MCP 连接配置: name={}, transport={}, url={}", connectionName, transport, connection.getUrl());
-
-            if (!connection.isEnabled()) {
-                log.info("外部 MCP [{}] 已禁用，跳过接入", connectionName);
-                continue;
-            }
-
-            if (!StringUtils.hasText(connection.getUrl())) {
-                log.warn("外部 MCP [{}] 未配置 url，跳过接入", connectionName);
-                continue;
-            }
-
-            createClient(connectionName, connection, properties)
-                    .ifPresent(clients::add);
-        }
-
-        log.info("外部 MCP 连接初始化完成: 配置 {} 个，成功接入 {} 个", totalConnections, clients.size());
-        return clients;
-    }
-
-    private Map<String, ExternalMcpProperties.ConnectionProperties> loadConnections(ExternalMcpProperties properties) {
-        Map<String, ExternalMcpProperties.ConnectionProperties> result = new LinkedHashMap<>(properties.getConnections());
-        Map<String, ExternalMcpProperties.ConnectionProperties> dbConnections = loadConnectionsFromDatabase(properties.getDatabase());
-        result.putAll(dbConnections);
-        return result;
-    }
-
-    private Map<String, ExternalMcpProperties.ConnectionProperties> loadConnectionsFromDatabase(
-            ExternalMcpProperties.DatabaseProperties databaseProperties) {
-        if (!databaseProperties.isEnabled()) {
-            log.info("外部 MCP 数据库加载未启用，跳过数据库加载");
-            return Map.of();
-        }
-
-        if (externalMcpConnectionService == null) {
-            log.warn("外部 MCP 数据库加载已启用，但 MyBatis-Plus 查询服务不可用，跳过数据库加载");
-            return Map.of();
-        }
-
-        Map<String, ExternalMcpProperties.ConnectionProperties> dbConnections = new LinkedHashMap<>();
-        try {
-            List<ExternalMcpConnection> rows = externalMcpConnectionService.list();
-            for (ExternalMcpConnection row : rows) {
-                String name = row.getConnectionName();
-                if (!StringUtils.hasText(name)) {
-                    continue;
-                }
-                dbConnections.put(name, mapDbConnection(row));
-            }
-            log.info("外部 MCP 数据库加载完成，读取 {} 个连接配置", dbConnections.size());
-        }
-        catch (Exception ex) {
-            log.error("从数据库加载外部 MCP 配置失败: {}", ex.getMessage());
-        }
-        return dbConnections;
-    }
-
-    private ExternalMcpProperties.ConnectionProperties mapDbConnection(ExternalMcpConnection dbRow) {
-        ExternalMcpProperties.ConnectionProperties connection = new ExternalMcpProperties.ConnectionProperties();
-        connection.setEnabled(Boolean.TRUE.equals(dbRow.getEnabled()));
-        connection.setTransport(resolveTransport(dbRow.getTransport()));
-        connection.setUrl(dbRow.getUrl());
-        connection.setEndpoint(dbRow.getEndpoint());
-        connection.setHeaders(parseHeaders(dbRow.getHeaders()));
-        return connection;
-    }
-
-    private Map<String, String> parseHeaders(String headersJson) {
-        if (!StringUtils.hasText(headersJson)) {
-            return new LinkedHashMap<>();
-        }
-        try {
-            return OBJECT_MAPPER.readValue(headersJson, new TypeReference<>() {
-            });
-        }
-        catch (Exception ex) {
-            log.warn("解析数据库 headers 失败，已忽略。headers={}", headersJson);
-            return new LinkedHashMap<>();
-        }
-    }
-
-    private ExternalMcpProperties.Transport resolveTransport(String transportValue) {
-        if (!StringUtils.hasText(transportValue)) {
-            return ExternalMcpProperties.Transport.SSE;
-        }
-        String normalized = transportValue.trim().toUpperCase();
-        if ("STREAMABLE_HTTP".equals(normalized)
-                || "STREAMABLE-HTTP".equals(normalized)
-                || "STREAMABLEHTTP".equals(normalized)) {
-            return ExternalMcpProperties.Transport.STREAMABLE;
-        }
-        try {
-            return ExternalMcpProperties.Transport.valueOf(normalized);
-        }
-        catch (IllegalArgumentException ex) {
-            log.warn("未知 transport [{}]，默认使用 SSE", transportValue);
-            return ExternalMcpProperties.Transport.SSE;
-        }
-    }
-
+    // Kept as compatibility beans for the retired single-user bridge. User connections are
+    // created lazily by TenantMcpRuntime and never exported as globally shared callbacks.
+    @Bean(destroyMethod="close")
+    public ExternalMcpClients externalMcpClients(ExternalMcpProperties properties) { return new ExternalMcpClients(List.of()); }
+    public void refreshExternalMcpClients(ExternalMcpClients clients, ExternalMcpProperties properties) { clients.replaceClients(List.of()); }
     @Bean
-    public ToolCallbackProvider externalMcpToolCallbackProvider(ExternalMcpClients externalMcpClients) {
-        return () -> {
-            List<McpSyncClient> clients = externalMcpClients.getClients();
-            if (clients.isEmpty()) {
-                return new ToolCallback[0];
-            }
-            return SyncMcpToolCallbackProvider.builder()
-                    .mcpClients(clients)
-                    .toolNamePrefixGenerator(new DefaultMcpToolNamePrefixGenerator())
-                    .build()
-                    .getToolCallbacks();
-        };
-    }
-
-    private Optional<McpSyncClient> createClient(
-            String connectionName,
-            ExternalMcpProperties.ConnectionProperties connection,
-            ExternalMcpProperties properties) {
-        try {
-            ResolvedEndpoint resolvedEndpoint = resolveEndpoint(connection);
-            McpClientTransport transport = switch (connection.getTransport()) {
-                case SSE -> buildSseTransport(resolvedEndpoint, connection, properties.getConnectTimeout());
-                case STREAMABLE -> buildStreamableTransport(resolvedEndpoint, connection, properties.getConnectTimeout());
-            };
-
-            McpSyncClient client = McpClient.sync(transport)
-                    .requestTimeout(properties.getRequestTimeout())
-                    .initializationTimeout(properties.getInitializationTimeout())
-                    .clientInfo(new McpSchema.Implementation("xiaozhi-external-mcp-client-" + connectionName, "0.0.1"))
-                    .build();
-
-            McpSchema.InitializeResult initializeResult = client.initialize();
-            McpSchema.ListToolsResult listToolsResult = client.listTools();
-
-            int toolCount = listToolsResult.tools() == null ? 0 : listToolsResult.tools().size();
-            log.info("已接入外部 MCP [{}]，地址={}，服务={}，发现 {} 个工具", connectionName,
-                    connection.getUrl(), initializeResult.serverInfo().name(), toolCount);
-
-            return Optional.of(client);
-        }
-        catch (Exception ex) {
-            log.error("接入外部 MCP [{}] 失败，地址={}，原因={}", connectionName, connection.getUrl(), ex.getMessage());
-            return Optional.empty();
-        }
-    }
-
-    private McpClientTransport buildSseTransport(
-            ResolvedEndpoint resolvedEndpoint,
-            ExternalMcpProperties.ConnectionProperties connection,
-            Duration connectTimeout) {
-        return HttpClientSseClientTransport.builder(resolvedEndpoint.baseUrl())
-                .sseEndpoint(resolvedEndpoint.endpoint())
-                .connectTimeout(connectTimeout)
-                .customizeRequest(builder -> applyHeaders(builder, connection))
-                .build();
-    }
-
-    private McpClientTransport buildStreamableTransport(
-            ResolvedEndpoint resolvedEndpoint,
-            ExternalMcpProperties.ConnectionProperties connection,
-            Duration connectTimeout) {
-        return HttpClientStreamableHttpTransport.builder(resolvedEndpoint.baseUrl())
-                .endpoint(resolvedEndpoint.endpoint())
-                .connectTimeout(connectTimeout)
-                .customizeRequest(builder -> applyHeaders(builder, connection))
-                .build();
-    }
-
-    private void applyHeaders(HttpRequest.Builder builder, ExternalMcpProperties.ConnectionProperties connection) {
-        connection.getHeaders().forEach(builder::header);
-    }
+    public ToolCallbackProvider externalMcpToolCallbackProvider(ExternalMcpClients clients) { return () -> new ToolCallback[0]; }
 
     ResolvedEndpoint resolveEndpoint(ExternalMcpProperties.ConnectionProperties connection) {
         URI uri = URI.create(connection.getUrl());
-        String baseUrl = uri.getScheme() + "://" + uri.getRawAuthority();
-        String configuredEndpoint = StringUtils.hasText(connection.getEndpoint()) ? connection.getEndpoint() : deriveEndpoint(uri);
-        String normalizedEndpoint = configuredEndpoint.startsWith("/") ? configuredEndpoint : "/" + configuredEndpoint;
-        return new ResolvedEndpoint(baseUrl, normalizedEndpoint);
-    }
-
-    private String deriveEndpoint(URI uri) {
-        String path = uri.getRawPath();
-        String query = uri.getRawQuery();
-
-        if (!StringUtils.hasText(path) || "/".equals(path)) {
-            return "/mcp";
+        String base = uri.getScheme() + "://" + uri.getRawAuthority();
+        String path = connection.getEndpoint();
+        if (!StringUtils.hasText(path)) {
+            path = uri.getRawPath();
+            if (!StringUtils.hasText(path) || "/".equals(path)) path = "/mcp";
+            if (StringUtils.hasText(uri.getRawQuery())) path += "?" + uri.getRawQuery();
         }
-
-        return StringUtils.hasText(query) ? path + "?" + query : path;
+        return new ResolvedEndpoint(base, path.startsWith("/") ? path : "/" + path);
     }
-
-    record ResolvedEndpoint(String baseUrl, String endpoint) {
-    }
+    record ResolvedEndpoint(String baseUrl, String endpoint) {}
 }

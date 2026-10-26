@@ -18,6 +18,12 @@ public class ExternalMcpConnection {
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
 
+    private Long ownerId;
+
+    public Long getOwnerId() { return ownerId; }
+
+    public void setOwnerId(Long ownerId) { this.ownerId = ownerId; }
+
     /**
      * 连接名称（唯一标识）。
      */

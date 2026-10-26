@@ -1,0 +1,47 @@
+server:
+  address: ${SERVER_ADDRESS:0.0.0.0}
+  port: ${SERVER_PORT:9998}
+spring:
+  application:
+    name: xiaozhi-multi-user-mcp
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+  ai:
+    mcp:
+      server:
+        enabled: true
+        name: xiaozhi-multi-user-mcp
+        version: 1.0.0
+        type: SYNC
+        protocol: STREAMABLE
+        streamable-http:
+          mcp-endpoint: /mcp
+langchain4j:
+  open-ai:
+    embedding-model:
+      base-url: ${EMBEDDING_BASE_URL:https://ai.gitee.com/v1}
+      api-key: ${EMBEDDING_API_KEY:not-configured}
+      dimensions: ${EMBEDDING_DIMENSIONS:4096}
+      model-name: ${EMBEDDING_MODEL:Qwen3-Embedding-8B}
+      log-requests: false
+      log-responses: false
+qdrant:
+  host: ${QDRANT_HOST:localhost}
+  port: ${QDRANT_PORT:6334}
+  collection-name: ${QDRANT_COLLECTION:xiaozhi-records}
+xiaozhi:
+  external-mcp:
+    connect-timeout: 5s
+    request-timeout: 30s
+    initialization-timeout: 10s
+    database:
+      enabled: true
+      url: ${XIAOZHI_EXTERNAL_DB_URL:jdbc:mysql://127.0.0.1:3306/xiaozhi?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+      username: ${XIAOZHI_EXTERNAL_DB_USERNAME:xiaozhi}
+      password: ${XIAOZHI_EXTERNAL_DB_PASSWORD:}

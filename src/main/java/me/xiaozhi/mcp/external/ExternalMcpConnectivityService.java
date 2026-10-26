@@ -95,7 +95,7 @@ public class ExternalMcpConnectivityService {
         }
     }
 
-    private McpSyncClient openClient(
+    public McpSyncClient openClient(
             ExternalMcpProperties.ConnectionProperties connection,
             ExternalMcpProperties properties,
             String clientName) {
@@ -203,7 +203,7 @@ public class ExternalMcpConnectivityService {
         String path = uri.getRawPath();
         String query = uri.getRawQuery();
         if (!StringUtils.hasText(path) || "/".equals(path)) {
-            return "/mcp";
+            path = "/mcp";
         }
         return StringUtils.hasText(query) ? path + "?" + query : path;
     }

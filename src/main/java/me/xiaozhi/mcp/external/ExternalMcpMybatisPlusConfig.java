@@ -24,7 +24,7 @@ public class ExternalMcpMybatisPlusConfig {
         ExternalMcpProperties.DatabaseProperties database = properties.getDatabase();
         if (!StringUtils.hasText(database.getUrl())
                 || !StringUtils.hasText(database.getUsername())
-                || !StringUtils.hasText(database.getPassword())) {
+                || database.getPassword() == null) {
             throw new IllegalStateException("外部 MCP 数据库已启用，但 url/username/password 配置不完整");
         }
 
@@ -32,6 +32,9 @@ public class ExternalMcpMybatisPlusConfig {
         dataSource.setJdbcUrl(database.getUrl());
         dataSource.setUsername(database.getUsername());
         dataSource.setPassword(database.getPassword());
+        dataSource.setMaximumPoolSize(16);
+        dataSource.setMinimumIdle(2);
+        dataSource.setConnectionTimeout(5000);
         return dataSource;
     }
 

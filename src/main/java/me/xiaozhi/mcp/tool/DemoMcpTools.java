@@ -4,6 +4,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
+import me.xiaozhi.mcp.account.ToolUserContext;
+import static dev.langchain4j.store.embedding.filter.MetadataFilterBuilder.metadataKey;
 
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
@@ -29,6 +31,8 @@ public class DemoMcpTools {
     private final OpenAiEmbeddingModel openAiEmbeddingModel;
     public final EmbeddingStore<TextSegment> qdEmbeddingStore;
     private final JavaMailSender javaMailSender;
+    @org.springframework.beans.factory.annotation.Value("${spring.mail.username:}")
+    private String mailFrom;
     /**
      * 发送简单文本邮件
      *
@@ -46,7 +50,8 @@ public class DemoMcpTools {
             message.setSubject(subject);
             message.setText(content);
 //            message.set
-            message.setFrom("玲珑女仆 <2597334145@qq.com>");
+            if (mailFrom == null || mailFrom.isBlank()) return "未配置发件账号";
+            message.setFrom(mailFrom);
 
             // 发送邮件
             javaMailSender.send(message);
@@ -60,13 +65,14 @@ public class DemoMcpTools {
 
     @Tool(name = "记录一下",description = "记录主人的感想和分享的一些生活琐事")
     public String saveMessage(@ToolParam(description = "记录内容")String message,@ToolParam(description = "记录内容的标识,方便理解记录的内容是什么")String auth) {
-        saveLog(auth+message,0L);
+        saveLog(auth+message,ToolUserContext.requireId());
         return "记录成功";
     }
 
     public void saveLog(String words,Long userId){
         TextSegment segment1 = TextSegment.from(words);
-        segment1.metadata().put("author", userId);
+        if (!ToolUserContext.requireId().equals(userId)) throw new IllegalArgumentException("用户上下文不匹配");
+        segment1.metadata().put("owner_id", String.valueOf(userId));
         Embedding embedding1 = openAiEmbeddingModel.embed(segment1).content();
         qdEmbeddingStore.add(embedding1, segment1);
     }
@@ -77,11 +83,13 @@ public class DemoMcpTools {
     }
 
     private String getZhuLog(String message) {
+        Long owner = ToolUserContext.requireId();
         Embedding queryEmbedding = openAiEmbeddingModel.embed(message).content();
         //创建搜索请求对象
         EmbeddingSearchRequest searchRequest = EmbeddingSearchRequest.builder()
                 .queryEmbedding(queryEmbedding)
                 .maxResults(1) //匹配最相似的一条记录
+                .filter(metadataKey("owner_id").isEqualTo(String.valueOf(owner)))
                 //.minScore(0.8)  向量得分最高1 越接近1越相似
                 .build();
         //根据搜索请求 searchRequest 在向量存储中进行相似度搜索
@@ -89,6 +97,7 @@ public class DemoMcpTools {
                 qdEmbeddingStore.search(searchRequest);
         //searchResult.matches()：获取搜索结果中的匹配项列表。
         //.get(0)：从匹配项列表中获取第一个匹配项
+        if (searchResult.matches().isEmpty()) return "暂无相关记录";
         EmbeddingMatch<TextSegment> embeddingMatch = searchResult.matches().get(0);
         //获取匹配项的相似度得分
         log.info("获取匹配项的相似度得分:{}",embeddingMatch.score()); // 0.8144288515898701
